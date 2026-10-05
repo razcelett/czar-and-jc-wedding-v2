@@ -4184,3 +4184,61 @@ a.clink:hover,
 a.clink:focus-visible {
   color: var(--accent)
 }
+
+/* scroll reveal (only applied by script, so content is always visible without it) */
+.rv {
+  opacity: 0
+}
+
+.rv.rv-in {
+  animation: rvIn 1s cubic-bezier(.2, .7, .2, 1) var(--rd, 0s) both
+}
+
+@keyframes rvIn {
+  from {
+    opacity: 0;
+    translate: 0 28px;
+    filter: blur(5px)
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+    filter: blur(0)
+  }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .rv {
+    opacity: 1
+  }
+
+  .rv.rv-in {
+    animation: none
+  }
+}
+
+/* Enlarge button: top-left like the "Featured film" pill (Drive's own pop-out icon lives top-right), contents centred */
+.film-enlarge {
+  left: 14px;
+  right: auto;
+  top: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px 0 12px;
+  line-height: 1
+}
+
+.film-enlarge svg {
+  display: block;
+  flex: 0 0 auto
+}
+
+.film-enlarge span {
+  display: block;
+  margin-right: -.1em;
+  transform: translateY(.5px)
+}

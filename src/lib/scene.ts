@@ -999,6 +999,27 @@ export function startScene(opts: SceneOptions): () => void {
     }
   });
 
+  /* ---------- animate elements as they scroll into view ---------- */
+  if ('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const EXPAND = '.grid,.venues,.timeline,.dress,.split,.faq-list,.faq-list > div';
+    const targets: Element[] = [];
+    const add = (el: Element) => { if (el.matches(EXPAND)) [...el.children].forEach(add); else targets.push(el); };
+    document.querySelectorAll('main > section:not(#surface)').forEach(sec => {
+      [...sec.children].forEach(c => c.matches('.wrap') ? [...c.children].forEach(add) : add(c));
+    });
+    const io = new IntersectionObserver(entries => entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('rv-in'); io.unobserve(e.target);
+    }), { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+    targets.forEach(el => {
+      const parent = el.parentElement as HTMLElement;
+      const i = [...parent.children].filter(s => targets.includes(s)).indexOf(el);
+      (el as HTMLElement).style.setProperty('--rd', (parent.matches(EXPAND) ? Math.min(i, 5) * 0.11 : 0) + 's');
+      el.classList.add('rv'); io.observe(el);
+    });
+    offs.push(() => { io.disconnect(); targets.forEach(el => el.classList.remove('rv', 'rv-in')); });
+  }
+
 
   return () => {
     alive = false;
