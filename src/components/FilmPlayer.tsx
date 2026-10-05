@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { PRENUP_DRIVE_URL } from '@/data/event';
 import { popBubble } from '@/lib/pop';
@@ -9,6 +9,40 @@ import { popBubble } from '@/lib/pop';
 function drivePreview(url: string): string | null {
   const m = url.match(/\/file\/d\/([\w-]+)/) || url.match(/[?&]id=([\w-]+)/);
   return m ? `https://drive.google.com/file/d/${m[1]}/preview` : null;
+}
+
+/** Google Drive's player collapses to a bare scrub bar (no play / volume / fullscreen controls) when its
+ *  iframe is narrower than ~600px (and uses a compact layout when short, too). So we always lay the iframe out at a full-size "virtual" width and
+ *  scale it down to fit the container, which keeps Drive's complete desktop controls on phones. */
+const MIN_FRAME_W = 1280;
+function DriveFrame({ src, autoplay }: { src: string; autoplay: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => setW(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const virtual = Math.max(MIN_FRAME_W, w);
+  const scale = w && w < MIN_FRAME_W ? w / MIN_FRAME_W : 1;
+  const style: CSSProperties = w
+    ? { width: virtual, height: (virtual * 9) / 16, transform: scale === 1 ? undefined : `scale(${scale})`, transformOrigin: '0 0' }
+    : { visibility: 'hidden' };
+  return (
+    <div ref={box} className="film-frame-box">
+      <iframe
+        src={src + (autoplay ? '?autoplay=1' : '')}
+        title="Czar & JC pre-nup film"
+        allow="autoplay; fullscreen; picture-in-picture"
+        allowFullScreen
+        style={style}
+      />
+    </div>
+  );
 }
 
 /** Featured film: a poster that becomes an embedded Google Drive player on tap,
@@ -40,7 +74,7 @@ export default function FilmPlayer() {
     return () => {
       window.removeEventListener('keydown', onKey);
       document.documentElement.style.overflow = '';
-      if (wasPlaying && music && !music.muted) music.play().catch(() => { });
+      if (wasPlaying && music && !music.muted) music.play().catch(() => {});
     };
   }, [big]);
 
@@ -51,14 +85,7 @@ export default function FilmPlayer() {
   }, [playing]);
 
   if (!src) return null;
-  const player = (autoplay: boolean) => (
-    <iframe
-      src={src + (autoplay ? '?autoplay=1' : '')}
-      title="Czar & JC pre-nup film"
-      allow="autoplay; fullscreen; picture-in-picture"
-      allowFullScreen
-    />
-  );
+  const player = (autoplay: boolean) => <DriveFrame src={src} autoplay={autoplay} />;
 
   return (
     <>
@@ -68,7 +95,7 @@ export default function FilmPlayer() {
             {player(true)}
             <button type="button" className="film-enlarge" onClick={() => setBig(true)} aria-label="Enlarge the film">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
-              <span>Enlarge</span>
+              Enlarge
             </button>
           </>
         ) : (
