@@ -1885,13 +1885,15 @@ th {
 }
 
 .submit-btn {
-  margin-top: 18px
+  align-self: center;
+  margin-top: 18px;
 }
 
 .rsvp-status {
   margin-top: 10px;
+  text-align: center;
   font-size: 14px;
-  color: var(--accent)
+  color: var(--accent);
 }
 
 .rsvp-status.error {
