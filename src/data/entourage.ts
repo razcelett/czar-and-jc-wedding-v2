@@ -18,18 +18,18 @@ export const ENTOURAGE: Group[] = [
     ],
   },
   {
+    title: 'Honor Attendants', layout: 'g2', narrow: true,
+    people: [
+      { role: 'Maid of Honor', names: ['Ma. Czarmane Rancap'] },
+      { role: 'Best Men', names: ['Leonardo Khalil Faustino', 'Jan Paulle Lumauag'] },
+    ],
+  },
+  {
     title: 'Secondary Sponsors', layout: 'g3',
     people: [
       { role: 'Candle', symbol: 'to light our path', names: ['Louie Jan Gabo', 'Maria Czarlette Trixia Rancap'] },
       { role: 'Veil', symbol: 'to light us as one', names: ['Benson Allam', 'Maria Czarina Allam'] },
       { role: 'Cord', symbol: 'to bind us together', names: ['Kristoffer Martin Dela Cruz', 'Nicole Alda Dela Cruz'] },
-    ],
-  },
-  {
-    title: 'Honor Attendants', layout: 'g2', narrow: true,
-    people: [
-      { role: 'Maid of Honor', names: ['Ma. Czarmane Rancap'] },
-      { role: 'Best Men', names: ['Leonardo Khalil Faustino', 'Michael James Dela Cruz'] },
     ],
   },
   {
