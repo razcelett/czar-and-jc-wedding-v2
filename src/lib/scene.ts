@@ -22,7 +22,16 @@ export function startScene(opts: SceneOptions): () => void {
 
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = id => document.getElementById(id);
-  const cv = $('sea'), ctx = cv.getContext('2d');
+  const cv = $('sea'), mainCtx = cv.getContext('2d');
+  let ctx = mainCtx; // every draw helper paints into `ctx`; the sky pass temporarily points it at skyCtx
+  /* The sky, sea surface, waves and buoy live on their own canvas that is part of the page (position:absolute,
+     top of the document). It scrolls with the page on the browser's compositor, so scrolling never repaints it;
+     it is only redrawn on a timer, and only while the hero is on screen. */
+  const skyCv = document.createElement('canvas'), skyCtx = skyCv.getContext('2d');
+  skyCv.id = 'sky'; skyCv.setAttribute('aria-hidden', 'true');
+  skyCv.style.cssText = 'position:absolute;top:0;left:0;width:100%;display:block;z-index:0;pointer-events:none';
+  cv.after(skyCv); offs.push(() => skyCv.remove());
+  let SKY_H = 0, skyAcc = 1;
   const sections = [...document.querySelectorAll('main > section')];
   let W = 0, H = 0, DPR = 1, maxScroll = 1, anchors = [];
   let SURF = 0.5; // waterline height: set from the hero's content so the sky never has dead space
@@ -45,7 +54,7 @@ export function startScene(opts: SceneOptions): () => void {
     }
     const l = anchors[anchors.length - 1]; return l.s + (m - l.d) / 2;
   }
-  const WATER = [[0, [92, 186, 204]], [15, [58, 154, 184]], [50, [32, 112, 148]], [120, [18, 76, 110]], [200, [12, 56, 88]], [400, [7, 34, 58]], [1000, [3, 14, 28]], [2500, [2, 9, 18]], [4000, [1, 6, 12]], [11000, [1, 3, 7]]];
+  const WATER = [[0,[92,186,204]],[15,[58,154,184]],[50,[32,112,148]],[120,[18,76,110]],[200,[12,56,88]],[400,[7,34,58]],[1000,[3,14,28]],[2500,[2,9,18]],[4000,[1,6,12]],[11000,[1,3,7]]];
   function waterRGB(m) {
     m = Math.max(0, m);
     for (let i = 0; i < WATER.length - 1; i++) {
@@ -147,19 +156,19 @@ export function startScene(opts: SceneOptions): () => void {
     const resized = causCv.width !== w || causCv.height !== h;
     if (resized) { causCv.width = w; causCv.height = h; causImg = causCtx.createImageData(w, h); }
     if (resized || !(causTick++ & 1)) {
-      const d = causImg.data;
-      for (let y = 0; y < h; y++) {
-        const fy = y / h, fade = Math.min(1, fy * 6) * Math.pow(1 - fy, 1.6), py = y / q;
-        for (let x = 0; x < w; x++) {
-          const px = x / q * .022, pz = py * .05;
-          const a1 = Math.sin(px * 1.0 + pz * .6 + t * .9 + Math.sin(pz * .7 + t * .4) * 1.2);
-          const a2 = Math.sin(px * -.7 + pz * 1.1 - t * .7 + Math.sin(px * .9 - t * .3) * 1.1);
-          const a3 = Math.sin(px * .4 - pz * .9 + t * .6 + Math.sin((px + pz) * .5 + t * .5));
-          const v = Math.abs(a1 + a2 + a3) / 3, c = Math.pow(Math.max(0, 1 - v * 2.6), 4) * fade;
-          const i = (y * w + x) * 4; d[i] = 210; d[i + 1] = 245; d[i + 2] = 240; d[i + 3] = c * 255;
-        }
+    const d = causImg.data;
+    for (let y = 0; y < h; y++) {
+      const fy = y / h, fade = Math.min(1, fy * 6) * Math.pow(1 - fy, 1.6), py = y / q;
+      for (let x = 0; x < w; x++) {
+        const px = x / q * .022, pz = py * .05;
+        const a1 = Math.sin(px * 1.0 + pz * .6 + t * .9 + Math.sin(pz * .7 + t * .4) * 1.2);
+        const a2 = Math.sin(px * -.7 + pz * 1.1 - t * .7 + Math.sin(px * .9 - t * .3) * 1.1);
+        const a3 = Math.sin(px * .4 - pz * .9 + t * .6 + Math.sin((px + pz) * .5 + t * .5));
+        const v = Math.abs(a1 + a2 + a3) / 3, c = Math.pow(Math.max(0, 1 - v * 2.6), 4) * fade;
+        const i = (y * w + x) * 4; d[i] = 210; d[i + 1] = 245; d[i + 2] = 240; d[i + 3] = c * 255;
       }
-      causCtx.putImageData(causImg, 0, 0);
+    }
+    causCtx.putImageData(causImg, 0, 0);
     }
     ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = .18; ctx.imageSmoothingEnabled = true;
     ctx.drawImage(causCv, 0, wl + 4, W, depthPx); ctx.restore();
@@ -316,7 +325,7 @@ export function startScene(opts: SceneOptions): () => void {
       const id = g.getImageData(0, 0, c.width, c.height), d = id.data;
       for (let i = 0; i < d.length; i += 4) { if (!d[i + 3]) continue; const n = (Math.random() - .5) * 22; d[i] += n; d[i + 1] += n; d[i + 2] += n * .9; }
       g.putImageData(id, 0, 0);
-    } catch (e) { }
+    } catch (e) {}
     // light falloff: one pool of light, black beyond it, and the far floor lost in the dark water
     g.save(); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.globalCompositeOperation = 'source-atop';
     const fall = g.createRadialGradient(lx, ly, 0, lx, ly, lr);
@@ -336,12 +345,22 @@ export function startScene(opts: SceneOptions): () => void {
     const top = Math.max(76, (innerHeight - total) / 2);
     SURF = clamp((top + skyH + 24) / innerHeight, .3, .6);
     document.documentElement.style.setProperty('--surf', SURF);
+    sizeSky();   // the waterline moved (fonts loaded): resize the sky canvas to match
+  }
+  function sizeSky() {
+    if (!H) return;
+    const h = Math.ceil(H * SURF + 130);   // waterline + wave crests + the soft light under the surface
+    if (h === SKY_H && skyCv.width === Math.round(W * DPR)) return;
+    SKY_H = h; skyCv.width = Math.round(W * DPR); skyCv.height = Math.round(SKY_H * DPR); skyCv.style.height = SKY_H + 'px';
+    skyCtx.setTransform(DPR, 0, 0, DPR, 0, 0); skyAcc = 1;
   }
   function resize() {
     if (!alive) return;
     fitSurface();
     DPR = Math.min(devicePixelRatio || 1, 1.5); W = innerWidth; H = innerHeight;
-    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    const MD = matchMedia('(pointer:coarse)').matches ? 1 : DPR;   // the underwater backdrop is soft: 1x on touch screens
+    cv.width = Math.round(W * MD); cv.height = Math.round(H * MD); mainCtx.setTransform(MD, 0, 0, MD, 0, 0);
+    sizeSky();
     build(); layout();
   }
   function layout() {
@@ -353,6 +372,7 @@ export function startScene(opts: SceneOptions): () => void {
     });
     for (let i = 1; i < anchors.length; i++) anchors[i].s = Math.max(anchors[i].s, anchors[i - 1].s + 1);
     RX = line.getBoundingClientRect().left;
+    diverH = diver.offsetHeight || 52; lastTh = -1;
     buildMarks(); shownM = -1;
   }
 
@@ -591,7 +611,15 @@ export function startScene(opts: SceneOptions): () => void {
     }
     ctx.restore();
 
-    drawSky(wl, t); drawUnderside(wl, t); drawBuoy(wl, t);
+    // sky pass: anchored to the page, so the waterline is constant here and scrolling costs nothing
+    skyAcc += dt;
+    if (sy < SKY_H + 20 && skyAcc >= 1 / 30) {
+      skyAcc = 0;
+      const swl = H * SURF;
+      ctx = skyCtx; ctx.clearRect(0, 0, W, SKY_H);
+      drawSky(swl, t); drawUnderside(swl, t); drawBuoy(swl, t);
+      ctx = mainCtx;
+    }
     updateLine(sy, dt, wl);
     requestAnimationFrame(frame);
   }
@@ -603,27 +631,32 @@ export function startScene(opts: SceneOptions): () => void {
   const legL = $('legL'), legR = $('legR'), finL = $('finL'), finR = $('finR');
   let marks = [], shownM = -1, kPh = 0, kAmp = .3, kPer = 4;
   let RX = 30; const ropeX = () => RX;
+  let diverH = 52, lastTop = -1, lastTh = -1, lastFill = -1, heightChk = 0;   // cached so the per-frame update never reads layout
   function buildMarks() {
     marks.forEach(m => m.remove()); marks = [];
     for (const a of anchors) {
       if (!a.d) continue;
       const b = document.createElement('button'); b.className = 'mark'; b.type = 'button';
       b.setAttribute('aria-label', `Go to ${a.d.toLocaleString('en-US')} metres`);
-      b.innerHTML = `<i></i><span>${a.d.toLocaleString('en-US')} m · ${a.el.querySelector('h2,.big') ? a.el.querySelector('h2,.big').textContent.replace('See you at depth.', 'See you at depth') : a.label}</span>`;
+      b.innerHTML = `<i></i><span>${a.d.toLocaleString('en-US')} m · ${a.el.querySelector('h2,.big') ? a.el.querySelector('h2,.big').textContent.replace('See you at depth.','See you at depth') : a.label}</span>`;
       b.onclick = () => scrollTo({ top: a.s, behavior: RM ? 'auto' : 'smooth' });
       b._a = a; line.appendChild(b); marks.push(b);
     }
   }
   function updateLine(sy, dt, wl) {
-    const top = clamp(wl, 0, H * .62), th = H - top - 36;
-    line.style.top = top + 'px';
-    const liveMax = Math.max(1, document.documentElement.scrollHeight - H);
-    if (Math.abs(liveMax - maxScroll) > 2) layout();                       // page height changed (images loaded): re-pin the depths
+    // reads first, and only twice a second: reading layout after writing styles forces a reflow every frame
+    if ((heightChk += dt) > .5) {
+      heightChk = 0;
+      const liveMax = Math.max(1, document.documentElement.scrollHeight - H);
+      if (Math.abs(liveMax - maxScroll) > 2) layout();                     // page height changed (images loaded): re-pin the depths
+    }
+    const top = Math.round(clamp(wl, 0, H * .62)), th = H - top - 36;
+    if (top !== lastTop) { lastTop = top; line.style.top = top + 'px'; }
     const f = clamp(sy / maxScroll, 0, 1), m = sy >= maxScroll - 2 ? anchors[anchors.length - 1].d : Math.max(0, depthAt(sy));
-    const atSurf = clamp(1 - m / 3, 0, 1), dh = diver.offsetHeight;
+    const atSurf = clamp(1 - m / 3, 0, 1), dh = diverH;
     const y = f * th;
-    fill.style.height = y + 'px';
-    for (const b of marks) b.style.top = (b._a.s / maxScroll * th) + 'px';
+    const fy = Math.round(y * 2) / 2; if (fy !== lastFill) { lastFill = fy; fill.style.height = y + 'px'; }
+    if (th !== lastTh) { lastTh = th; for (const b of marks) b.style.top = (b._a.s / maxScroll * th) + 'px'; }   // marks only move when the line's length changes
     const bob = atSurf * wave(ropeX(), T) * .8 + (1 - atSurf) * (dir === 'idle' && !RM ? Math.sin(T * .9) * 2 : 0);
     diver.style.transform = `translateY(${y - dh * lerp(.5, .2, atSurf) + bob}px)`;
     // direction: head-down while descending, head-up while ascending or resting at the surface
@@ -649,7 +682,11 @@ export function startScene(opts: SceneOptions): () => void {
     for (let k = 0; k < 2; k++) sparks.push({ x: e.clientX + R(-6, 6), y: e.clientY + R(-6, 6), vx: R(-12, 12), vy: R(-14, 6), life: R(.8, 1.6), max: 1.6 });
     if (sparks.length > 220) sparks.splice(0, sparks.length - 220);
   }, { passive: true });
-  let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(resize, 120); });
+  let rz; const touch = matchMedia('(pointer:coarse)');
+  addEventListener('resize', () => {
+    clearTimeout(rz);
+    rz = setTimeout(() => { if (touch.matches && innerWidth === W && Math.abs(innerHeight - H) < 180) return; resize(); }, 120);   // address bar show/hide: keep the scene as is
+  });
   let lz; new ResizeObserver(() => { clearTimeout(lz); lz = setTimeout(layout, 100); }).observe(document.querySelector('main'));
   document.fonts && document.fonts.ready.then(() => { fitSurface(); layout(); });
   addEventListener('load', layout);
@@ -670,8 +707,12 @@ export function startScene(opts: SceneOptions): () => void {
   let monoOk = true;
   function useStill() { if (!monoOk) return; monoOk = false; mc.hidden = true; still.hidden = false; }
   on(mv, 'error', useStill);
+  let lastMono = 0;
   function drawMono() {
     if (!monoOk) return;
+    const nowM = performance.now();
+    if (document.hidden || scrollY > H * 1.1 || nowM - lastMono < 33) { requestAnimationFrame(drawMono); return; }   // ~30fps, and only while the hero is in view
+    lastMono = nowM;
     if (mv.readyState >= 2) {
       try {
         mctx.drawImage(mv, 0, 0, 752, 304);
@@ -700,14 +741,14 @@ export function startScene(opts: SceneOptions): () => void {
     if (p && p.then) p.then(() => { musicBtn.hidden = false; let v = 0; const f = setInterval(() => { v = Math.min(.5, v + .025); music.volume = v; if (v >= .5) clearInterval(f); }, 80); }).catch(() => { musicBtn.hidden = false; musicBtn.classList.add('muted'); });
   }
   on(musicBtn, 'click', () => {
-    if (music.paused) { music.muted = false; music.volume = .5; music.play().catch(() => { }); musicBtn.classList.remove('muted'); musicBtn.setAttribute('aria-pressed', 'false'); musicBtn.setAttribute('aria-label', 'Mute music'); return; }
+    if (music.paused) { music.muted = false; music.volume = .5; music.play().catch(() => {}); musicBtn.classList.remove('muted'); musicBtn.setAttribute('aria-pressed', 'false'); musicBtn.setAttribute('aria-label', 'Mute music'); return; }
     music.muted = !music.muted; musicBtn.classList.toggle('muted', music.muted);
     musicBtn.setAttribute('aria-pressed', String(music.muted)); musicBtn.setAttribute('aria-label', music.muted ? 'Unmute music' : 'Mute music');
   });
   let pausedForHidden = false;
   docOn('visibilitychange', () => {
     if (document.hidden) { if (!music.paused) { music.pause(); pausedForHidden = true; } }
-    else if (pausedForHidden) { pausedForHidden = false; music.play().catch(() => { }); }
+    else if (pausedForHidden) { pausedForHidden = false; music.play().catch(() => {}); }
   });
   addEventListener('pagehide', () => music.pause());
   function openCover() {
@@ -741,7 +782,7 @@ export function startScene(opts: SceneOptions): () => void {
   }
   on(cover, 'click', openCover);
   on(cover, 'keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCover(); } });
-  try { cover.focus({ preventScroll: true }); } catch (e) { }
+  try { cover.focus({ preventScroll: true }); } catch (e) {}
 
 
   /* ---------- infinite gallery: auto-drifts, drag or swipe, tap to open ----------
@@ -753,7 +794,7 @@ export function startScene(opts: SceneOptions): () => void {
     // a gallery film plays with its own sound: hush the background music meanwhile, bring it back after
     const bgm = document.getElementById('bg-music') as HTMLAudioElement | null; let bgmForVid = false;
     on(vid, 'play', () => { if (bgm && !bgm.paused && !bgm.muted) { bgm.pause(); bgmForVid = true; } });
-    on(vid, 'pause', () => { if (bgmForVid && bgm) { bgmForVid = false; bgm.play().catch(() => { }); } });
+    on(vid, 'pause', () => { if (bgmForVid && bgm) { bgmForVid = false; bgm.play().catch(() => {}); } });
 
     const pad2 = n => String(n).padStart(2, '0');
     const card = (g, i) => `<figure class="card" tabindex="0" role="button" data-i="${i}" aria-label="Open ${g.video ? 'video' : 'photo'}: ${g.cap}">` +
@@ -799,7 +840,7 @@ export function startScene(opts: SceneOptions): () => void {
     let cur = 0, opener = null;
     function show(i) {
       cur = (i + GALLERY.length) % GALLERY.length; const g = GALLERY[cur];
-      if (g.video) { img.hidden = true; vid.hidden = false; vid.poster = g.poster || ''; vid.src = g.full || g.src; vid.play().catch(() => { }); }
+      if (g.video) { img.hidden = true; vid.hidden = false; vid.poster = g.poster || ''; vid.src = g.full || g.src; vid.play().catch(() => {}); }
       else { vid.pause(); vid.hidden = true; img.hidden = false; img.src = g.full || g.src; img.alt = g.cap; }
       cap.textContent = `${pad2(cur + 1)} / ${pad2(GALLERY.length)} · ${g.cap}`;
     }
@@ -836,11 +877,11 @@ export function startScene(opts: SceneOptions): () => void {
   const esc = v => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
   const slug = p => p.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120) || 'party';
   const joinNames = n => n.length === 1 ? n[0] : n.length === 2 ? n[0] + ' and ' + n[1] : n.slice(0, -1).join(', ') + ', and ' + n[n.length - 1];
-  const origPh = 'Start typing your name…';   // fixed text: the live placeholder may already read "Loading…" if this code runs twice
+  const origPh = searchInput.placeholder;
   searchInput.disabled = true; searchInput.placeholder = 'Loading guest list…';
 
   (async () => {
-    try { if (window.claude?.use) [db, user] = await Promise.all([claude.use('db'), claude.use('user')]); } catch (e) { }
+    try { if (window.claude?.use) [db, user] = await Promise.all([claude.use('db'), claude.use('user')]); } catch (e) {}
     if (!db) { setTimeout(loadFromSheet); return; }   // hosted on your own site: use the Google Sheet
     db.collection('guests').onSnapshot(snap => {
       GUEST_LIST = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => p.party && Array.isArray(p.guests)).sort((a, b) => a.party.localeCompare(b.party));
@@ -850,31 +891,22 @@ export function startScene(opts: SceneOptions): () => void {
     }, () => { searchInput.placeholder = "Couldn't load the guest list. Refresh to try again."; });
     db.collection('responses').onSnapshot(snap => {
       EXISTING = {}; snap.docs.forEach(d => { const v = d.data(); if (v) EXISTING[d.id] = v; });
-    }, () => { });
+    }, () => {});
   })();
 
   /* Google Sheet (Apps Script) mode, used when the site runs outside Claude.
      GET returns { ok, guestList: [{ party, note, guests: [names] }], rsvps: { party: [{ guestName, attending, nickname }] } };
      POST (text/plain JSON) takes { party, attendance: { name: 'yes'|'no' }, nicknames: { name: text }, submittedAt }. */
   const RSVP_ENDPOINT = opts.rsvpEndpoint;
-  function loadFromSheet(attempt = 1) {
+  function loadFromSheet() {
     if (!RSVP_ENDPOINT) { searchInput.placeholder = 'Guest list not connected yet'; return; }
-    // Google Apps Script can take a few seconds to wake up: say so, give it 20 s, then retry once
-    const slow = setTimeout(() => { if (!alive) return; if (searchInput.disabled) searchInput.placeholder = 'Still loading the guest list, one moment…'; }, 5000);
-    const ctrl = 'AbortController' in window ? new AbortController() : null;
-    const timer = setTimeout(() => ctrl && ctrl.abort(), 20000);
-    fetch(RSVP_ENDPOINT, ctrl ? { signal: ctrl.signal } : undefined).then(r => r.json()).then(res => {
-      clearTimeout(slow); clearTimeout(timer); if (!alive) return;
+    fetch(RSVP_ENDPOINT).then(r => r.json()).then(res => {
       if (!res.ok || !Array.isArray(res.guestList)) throw new Error(res.error || 'bad response');
       GUEST_LIST = res.guestList.filter(p => p.party && Array.isArray(p.guests)).map(p => ({ id: slug(p.party), party: p.party, note: p.note || '', guests: p.guests }));
       EXISTING = {}; Object.entries(res.rsvps || {}).forEach(([party, list]) => { if (list && list.length) EXISTING[slug(party)] = { party, guests: list }; });
       searchInput.disabled = !GUEST_LIST.length;
       searchInput.placeholder = GUEST_LIST.length ? origPh : 'The guest list is being prepared. Please check back soon.';
-    }).catch(() => {
-      clearTimeout(slow); clearTimeout(timer); if (!alive) return;
-      if (attempt < 2) { loadFromSheet(attempt + 1); return; }
-      searchInput.placeholder = "Couldn't load the guest list. Refresh to try again.";
-    });
+    }).catch(() => { searchInput.placeholder = "Couldn't load the guest list. Refresh to try again."; });
   }
   async function sendToSheet(p) {
     const attendance = {}, nicknames = {};
@@ -998,27 +1030,6 @@ export function startScene(opts: SceneOptions): () => void {
       statusEl.textContent = "That didn't go through. Please try again, or message Czar or JC directly at jcandczar@gmail.com or 0905 567 8681.";
     }
   });
-
-  /* ---------- animate elements as they scroll into view ---------- */
-  if ('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const EXPAND = '.grid,.venues,.timeline,.dress,.split,.faq-list,.faq-list > div';
-    const targets: Element[] = [];
-    const add = (el: Element) => { if (el.matches(EXPAND)) [...el.children].forEach(add); else targets.push(el); };
-    document.querySelectorAll('main > section:not(#surface)').forEach(sec => {
-      [...sec.children].forEach(c => c.matches('.wrap') ? [...c.children].forEach(add) : add(c));
-    });
-    const io = new IntersectionObserver(entries => entries.forEach(e => {
-      if (!e.isIntersecting) return;
-      e.target.classList.add('rv-in'); io.unobserve(e.target);
-    }), { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
-    targets.forEach(el => {
-      const parent = el.parentElement as HTMLElement;
-      const i = [...parent.children].filter(s => targets.includes(s)).indexOf(el);
-      (el as HTMLElement).style.setProperty('--rd', (parent.matches(EXPAND) ? Math.min(i, 5) * 0.11 : 0) + 's');
-      el.classList.add('rv'); io.observe(el);
-    });
-    offs.push(() => { io.disconnect(); targets.forEach(el => el.classList.remove('rv', 'rv-in')); });
-  }
 
 
   return () => {

@@ -20,6 +20,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${marcellus.variable} ${greatVibes.variable} ${karla.variable}`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: "try{history.scrollRestoration='manual'}catch(e){}" }} />
+      </head>
       <body>{children}</body>
     </html>
   );

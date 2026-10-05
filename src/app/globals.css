@@ -420,6 +420,15 @@ p {
   column-gap: 24px
 }
 
+.ent-names.cols>span {
+  display: block;
+  break-inside: avoid
+}
+
+.ent-names.cols br {
+  display: none
+}
+
 /* entourage + details: centred at every size */
 #entourage .wrap,
 #details .wrap {
@@ -3003,20 +3012,15 @@ th {
   justify-content: center;
   background: rgba(4, 16, 26, .96);
   padding:
-    max(52px, calc(env(safe-area-inset-top) + 44px))
-    max(12px, env(safe-area-inset-right))
-    max(12px, env(safe-area-inset-bottom))
-    max(12px, env(safe-area-inset-left));
+    max(52px, calc(env(safe-area-inset-top) + 44px)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   overflow: hidden
 }
 
 .film-modal-frame {
   position: relative;
-  width: min(
-    1100px,
-    100%,
-    calc((100dvh - 76px) * 16 / 9)
-  );
+  width: min(1100px,
+      100%,
+      calc((100dvh - 76px) * 16 / 9));
   aspect-ratio: 16 / 9;
   flex: 0 0 auto;
   background: #000;
@@ -3057,17 +3061,12 @@ th {
 @media (max-width:720px) {
   .film-modal {
     padding:
-      max(58px, calc(env(safe-area-inset-top) + 50px))
-      12px
-      max(12px, env(safe-area-inset-bottom))
-      12px
+      max(58px, calc(env(safe-area-inset-top) + 50px)) 12px max(12px, env(safe-area-inset-bottom)) 12px
   }
 
   .film-modal-frame {
-    width: min(
-      100%,
-      calc((100dvh - 82px) * 16 / 9)
-    );
+    width: min(100%,
+        calc((100dvh - 82px) * 16 / 9));
     aspect-ratio: 16 / 9
   }
 
@@ -3105,17 +3104,12 @@ th {
 @media (max-width:900px) and (orientation:landscape) {
   .film-modal {
     padding:
-      max(12px, env(safe-area-inset-top))
-      max(12px, env(safe-area-inset-right))
-      max(12px, env(safe-area-inset-bottom))
-      max(12px, env(safe-area-inset-left))
+      max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))
   }
 
   .film-modal-frame {
-    width: min(
-      100%,
-      calc((100dvh - 24px) * 16 / 9)
-    )
+    width: min(100%,
+        calc((100dvh - 24px) * 16 / 9))
   }
 
   .film-modal .lb-close {
@@ -4158,6 +4152,12 @@ main>section .wrap>:last-child>:last-child>:last-child {
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
   transition: transform .4s cubic-bezier(.2, .8, .2, 1), box-shadow .4s
+}
+
+#entourage .ent,
+.palette-card {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none
 }
 
 #entourage .ent::before {
