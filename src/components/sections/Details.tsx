@@ -51,7 +51,7 @@ export default function Details() {
             <a href="https://www.google.com/maps/place/Citystate+Asturias+Hotel+Palawan/@9.7656791,118.7428855,17z" target="_blank" rel="noopener">Map &amp; directions</a>
           </article>
         </div>
-        <SectionLabel>The Timeline</SectionLabel>
+        <SectionLabel>The Divetime</SectionLabel>
         <Timeline />
         <SectionLabel>The Dress · Formal / Semi-formal</SectionLabel>
         <div className="dress">

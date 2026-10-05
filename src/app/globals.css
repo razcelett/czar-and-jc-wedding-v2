@@ -2983,28 +2983,43 @@ th {
   border: 1px solid rgba(255, 255, 255, .3);
   border-radius: 999px;
   padding: 8px 12px;
-  cursor: pointer
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px)
 }
 
 .film-enlarge:hover {
   background: rgba(4, 20, 32, .9)
 }
 
+
+/* enlarged film modal */
 .film-modal {
   position: fixed;
   inset: 0;
   z-index: 1100;
-  background: rgba(4, 16, 26, .96);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(16px, 4vw, 48px)
+  background: rgba(4, 16, 26, .96);
+  padding:
+    max(52px, calc(env(safe-area-inset-top) + 44px))
+    max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+  overflow: hidden
 }
 
 .film-modal-frame {
   position: relative;
-  width: min(100%, calc((100vh - 120px) * 16 / 9));
-  aspect-ratio: 16/9;
+  width: min(
+    1100px,
+    100%,
+    calc((100dvh - 76px) * 16 / 9)
+  );
+  aspect-ratio: 16 / 9;
+  flex: 0 0 auto;
+  background: #000;
   box-shadow: 0 30px 70px rgba(0, 0, 0, .5)
 }
 
@@ -3016,6 +3031,99 @@ th {
   border: 0;
   background: #000
 }
+
+
+/* modal close button */
+.film-modal .lb-close {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 20;
+  background: rgba(4, 20, 32, .65);
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 999px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: .08em;
+  padding: 8px 12px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px)
+}
+
+
+/* phone */
+@media (max-width:720px) {
+  .film-modal {
+    padding:
+      max(58px, calc(env(safe-area-inset-top) + 50px))
+      12px
+      max(12px, env(safe-area-inset-bottom))
+      12px
+  }
+
+  .film-modal-frame {
+    width: min(
+      100%,
+      calc((100dvh - 82px) * 16 / 9)
+    );
+    aspect-ratio: 16 / 9
+  }
+
+  .film-modal .lb-close {
+    top: max(12px, env(safe-area-inset-top));
+    right: 12px
+  }
+
+  .film-enlarge {
+    right: 10px;
+    top: 10px;
+    padding: 8px 10px
+  }
+}
+
+
+/* very small phones */
+@media (max-width:480px) {
+  .film-modal {
+    padding-left: 10px;
+    padding-right: 10px
+  }
+
+  .film-modal-frame {
+    width: 100%
+  }
+
+  .film-enlarge span {
+    display: none
+  }
+}
+
+
+/* landscape phones */
+@media (max-width:900px) and (orientation:landscape) {
+  .film-modal {
+    padding:
+      max(12px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left))
+  }
+
+  .film-modal-frame {
+    width: min(
+      100%,
+      calc((100dvh - 24px) * 16 / 9)
+    )
+  }
+
+  .film-modal .lb-close {
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right))
+  }
+}
+
 
 /* pop animation for the photo viewer and the enlarged film */
 .pop-overlay {

@@ -29,7 +29,7 @@ export const ENTOURAGE: Group[] = [
     title: 'Honor Attendants', layout: 'g2', narrow: true,
     people: [
       { role: 'Maid of Honor', names: ['Ma. Czarmane Rancap'] },
-      { role: 'Best Man', names: ['Leonardo Khalil Faustino'] },
+      { role: 'Best Men', names: ['Leonardo Khalil Faustino', 'Michael James Dela Cruz'] },
     ],
   },
   {
