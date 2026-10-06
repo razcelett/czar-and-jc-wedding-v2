@@ -22,16 +22,30 @@ export function startScene(opts: SceneOptions): () => void {
 
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = id => document.getElementById(id);
+  /* LAYERS. Nothing that depends on the scroll position is drawn in JavaScript any more, so scrolling is handled
+     entirely by the browser's compositor and can't lag or flicker:
+       #world  one page-sized layer behind the content (scrolls natively):
+                 - the depth gradient (a static CSS gradient laid out in page coordinates)
+                 - the sky canvas (top of the page)
+                 - one small canvas per creature / school / the trench floor, parked at its depth
+       #sea    a fixed, screen-sized canvas for marine snow, bubbles and sparks (no scroll dependence)
+     Canvases only repaint on a ~30fps timer, and only while they are on screen. */
   const cv = $('sea'), mainCtx = cv.getContext('2d');
-  let ctx = mainCtx; // every draw helper paints into `ctx`; the sky pass temporarily points it at skyCtx
-  /* The sky, sea surface, waves and buoy live on their own canvas that is part of the page (position:absolute,
-     top of the document). It scrolls with the page on the browser's compositor, so scrolling never repaints it;
-     it is only redrawn on a timer, and only while the hero is on screen. */
+  let ctx = mainCtx; // every draw helper paints into `ctx`; each pass points it at the canvas it is drawing
+  const body = document.body, bodyPos = body.style.position;
+  body.style.position = 'relative'; offs.push(() => { body.style.position = bodyPos; });
+  const world = document.createElement('div');
+  world.id = 'world'; world.setAttribute('aria-hidden', 'true');
+  world.style.cssText = 'position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden';
+  cv.before(world); offs.push(() => world.remove());
   const skyCv = document.createElement('canvas'), skyCtx = skyCv.getContext('2d');
-  skyCv.id = 'sky'; skyCv.setAttribute('aria-hidden', 'true');
-  skyCv.style.cssText = 'position:absolute;top:0;left:0;width:100%;display:block;z-index:0;pointer-events:none';
-  cv.after(skyCv); offs.push(() => skyCv.remove());
-  let SKY_H = 0, skyAcc = 1;
+  skyCv.id = 'sky'; skyCv._vis = true;
+  skyCv.style.cssText = 'position:absolute;top:0;left:0;width:100%;display:block;pointer-events:none';
+  world.appendChild(skyCv);
+  let SKY_H = 0, drawAcc = 0;
+  const actors = [];
+  const io = new IntersectionObserver(es => { for (const e of es) e.target._vis = e.isIntersecting; }, { rootMargin: '240px 0px' });
+  offs.push(() => io.disconnect()); io.observe(skyCv);
   const sections = [...document.querySelectorAll('main > section')];
   let W = 0, H = 0, DPR = 1, maxScroll = 1, anchors = [];
   let SURF = 0.5; // waterline height: set from the hero's content so the sky never has dead space
@@ -86,6 +100,49 @@ export function startScene(opts: SceneOptions): () => void {
     ];
     cirrus = Array.from({ length: 3 }, () => ({ x: R(0, W), y: R(.62, .85), w: R(180, 360) * big, v: R(2, 4), r: R(-.08, .08) }));
     buildFloor(); buildMountains(); if (!seaTex) buildSeaTex();
+    buildActors();
+  }
+  /* each creature gets a small canvas parked at its depth; it scrolls with the page like any other element */
+  function addActor(a) {
+    const c = document.createElement('canvas');
+    c.style.cssText = 'position:absolute;left:0;width:100%;display:block;pointer-events:none';
+    a.cv = c; a.cx = c.getContext('2d'); c._vis = false; actors.push(a);
+    const d = Math.min(devicePixelRatio || 1, matchMedia('(pointer:coarse)').matches ? 1.25 : 1.5);
+    c.width = Math.round(W * d); c.height = Math.round(a.bandH * d); c.style.height = a.bandH + 'px'; a.cx.setTransform(d, 0, 0, d, 0, 0);
+    world.appendChild(c); io.observe(c);
+  }
+  function buildActors() {
+    for (const a of actors) { io.unobserve(a.cv); a.cv.remove(); }
+    actors.length = 0;
+    for (const sc of schools) addActor({ m: sc.m, bandH: 240, render(y, t, step) {
+      if (!RM) { sc.x += sc.v * sc.dir * step; if (sc.x > W + 250) sc.x = -250; if (sc.x < -250) sc.x = W + 250; }
+      const c = waterRGB(sc.m * 1.6).map(v => v * .42), hl = clamp(.4 - sc.m / 260, 0, .4);
+      for (const f of sc.fish) drawFish(sc.x + f.ox + Math.sin(t * .9 + f.ph) * 5, y + f.oy + Math.cos(t * 1.2 + f.ph) * 4, sc.size * f.k, sc.dir, rgb(c, .85), hl, t, f.ph);
+    } });
+    for (const sc of lantern) addActor({ m: sc.m, bandH: 200, render(y, t, step) {
+      if (!RM) { sc.x += sc.v * sc.dir * step; if (sc.x > W + 150) sc.x = -150; if (sc.x < -150) sc.x = W + 150; }
+      drawLantern(sc, y, t);
+    } });
+    addActor({ m: angler.m, bandH: 300, render(y, t, step) {
+      if (!RM) { angler.x += angler.v * angler.dir * step; if (angler.x < -80) angler.x = W + 80; }
+      drawAngler(angler, y, t);
+    } });
+    for (const j of jellies) addActor({ m: j.m, bandH: 260, render(y, t) { drawJelly(j, y, t); } });
+    // the trench floor sits at the very bottom of the page; its cone of light reaches up above the seabed
+    if (floorImg) addActor({ floor: true, bandH: Math.ceil(H * .55 + floorImg.fh), render(y, t) { drawFloor(H * .55 + floorImg.hz0, t); } });
+  }
+  function placeActors() {
+    for (const a of actors) {
+      const y = a.floor ? maxScroll + H * .14 + H * SURF - floorImg.hz0 - H * .55 : sAt(a.m) + H * SURF - a.bandH / 2;
+      a.cv.style.top = Math.round(y) + 'px';
+    }
+  }
+  /* the water colour for every depth, as a static gradient in page coordinates (what drawWater painted each frame) */
+  function buildWorld() {
+    const total = Math.max(document.documentElement.scrollHeight, H), stops = [];
+    for (let p = 0; p <= total + 36; p += 36) { const c = waterRGB(Math.max(0, depthAt(p - H * SURF))); stops.push(`rgb(${c[0]},${c[1]},${c[2]}) ${p}px`); }
+    world.style.background = `linear-gradient(180deg,${stops.join(',')})`;
+    placeActors();
   }
   /* one cumulus cloud, painted at half size from many soft puffs, then shaded: bright sunlit tops, flat grey-blue base */
   /* value noise + fbm, used to paint clouds and canopy texture */
@@ -352,7 +409,7 @@ export function startScene(opts: SceneOptions): () => void {
     const h = Math.ceil(H * SURF + 130);   // waterline + wave crests + the soft light under the surface
     if (h === SKY_H && skyCv.width === Math.round(W * DPR)) return;
     SKY_H = h; skyCv.width = Math.round(W * DPR); skyCv.height = Math.round(SKY_H * DPR); skyCv.style.height = SKY_H + 'px';
-    skyCtx.setTransform(DPR, 0, 0, DPR, 0, 0); skyAcc = 1;
+    skyCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
   }
   function resize() {
     if (!alive) return;
@@ -374,6 +431,7 @@ export function startScene(opts: SceneOptions): () => void {
     RX = line.getBoundingClientRect().left;
     diverH = diver.offsetHeight || 52; lastTh = -1;
     buildMarks(); shownM = -1;
+    buildWorld();
   }
 
   /* ---------- sky, waves, light ---------- */
@@ -569,28 +627,13 @@ export function startScene(opts: SceneOptions): () => void {
     ctx.restore();
   }
 
-  /* ---------- frame ---------- */
-  let last = performance.now(), T = 0, lastSY = scrollY, idleT = 0, dir = 'idle';
-  function frame(now) {
-    if (!alive) return;
-    const dt = Math.min(.05, (now - last) / 1000); last = now; if (!RM) T += dt;
-    const t = T, sy = scrollY, wl = H * SURF - sy;
-    drawWater(sy);
-    for (const sc of schools) {
-      const y = yOf(sAt(sc.m), sy); if (y < -250 || y > H + 250) continue;
-      if (!RM) { sc.x += sc.v * sc.dir * dt; if (sc.x > W + 250) sc.x = -250; if (sc.x < -250) sc.x = W + 250; }
-      const c = waterRGB(sc.m * 1.6).map(v => v * .42), hl = clamp(.4 - sc.m / 260, 0, .4);
-      for (const f of sc.fish) drawFish(sc.x + f.ox + Math.sin(t * .9 + f.ph) * 5, y + f.oy + Math.cos(t * 1.2 + f.ph) * 4, sc.size * f.k, sc.dir, rgb(c, .85), hl, t, f.ph);
-    }
-    for (const sc of lantern) { const y = yOf(sAt(sc.m), sy); if (y > -80 && y < H + 80) { if (!RM) { sc.x += sc.v * sc.dir * dt; if (sc.x > W + 150) sc.x = -150; if (sc.x < -150) sc.x = W + 150; } drawLantern(sc, y, t); } }
-    { const y = yOf(sAt(angler.m), sy); if (y > -100 && y < H + 100) { if (!RM) { angler.x += angler.v * angler.dir * dt; if (angler.x < -80) angler.x = W + 80; } drawAngler(angler, y, t); } }
-    for (const j of jellies) { const y = yOf(sAt(j.m), sy); if (y > -120 && y < H + 120) drawJelly(j, y, t); }
-    drawFloor(yOf(maxScroll + H * .14, sy), t);
-
+  /* marine snow, rising bubbles and sparks: screen-space and time-driven, so scrolling never repaints them */
+  function drawSnow(t, dt, sy, wl) {
+    ctx.clearRect(0, 0, W, H);
     ctx.save();
     const dMid = Math.max(0, depthAt(sy)), snowA = clamp(.16 + dMid / 1500, .16, .5);
     for (const p of snow) {
-      const y = ((p.y - sy * p.z * .7 - t * 7 * p.z) % (H + 40) + (H + 40)) % (H + 40) - 20; if (y < wl + 10) continue;
+      const y = ((p.y - t * 7 * p.z) % (H + 40) + (H + 40)) % (H + 40) - 20; if (y < wl + 10) continue;
       ctx.fillStyle = `rgba(230,242,240,${snowA * p.z})`; ctx.beginPath(); ctx.arc(p.x + Math.sin(t * .4 + p.ph) * 6, y, p.r * p.z + .3, 0, 6.29); ctx.fill();
     }
     if (!RM && dMid < 120 && Math.random() < dt * 2) bubbles.push({ x: R(0, W), y: H + 10, r: R(1.5, 4), v: R(40, 90), ph: R(0, 6.28) });
@@ -610,15 +653,24 @@ export function startScene(opts: SceneOptions): () => void {
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, 6.29); ctx.fill();
     }
     ctx.restore();
+  }
 
-    // sky pass: anchored to the page, so the waterline is constant here and scrolling costs nothing
-    skyAcc += dt;
-    if (sy < SKY_H + 20 && skyAcc >= 1 / 30) {
-      skyAcc = 0;
-      const swl = H * SURF;
-      ctx = skyCtx; ctx.clearRect(0, 0, W, SKY_H);
-      drawSky(swl, t); drawUnderside(swl, t); drawBuoy(swl, t);
-      ctx = mainCtx;
+  /* ---------- frame ---------- */
+  let last = performance.now(), T = 0, lastSY = scrollY, idleT = 0, dir = 'idle';
+  function frame(now) {
+    if (!alive) return;
+    const dt = Math.min(.05, (now - last) / 1000); last = now; if (!RM) T += dt;
+    const t = T, sy = scrollY, wl = H * SURF - sy;
+    drawAcc += dt;
+    if (drawAcc >= 1 / 30) {          // all animation runs on this timer, never in response to scrolling
+      const step = drawAcc; drawAcc = 0;
+      if (skyCv._vis) {               // sky, sea surface, waves, buoy: the waterline is fixed in page coordinates
+        const swl = H * SURF;
+        ctx = skyCtx; ctx.clearRect(0, 0, W, SKY_H);
+        drawSky(swl, t); drawUnderside(swl, t); drawBuoy(swl, t);
+      }
+      for (const a of actors) if (a.cv._vis) { ctx = a.cx; ctx.clearRect(0, 0, W, a.bandH); a.render(a.bandH / 2, t, step); }
+      ctx = mainCtx; drawSnow(t, step, sy, wl);
     }
     updateLine(sy, dt, wl);
     requestAnimationFrame(frame);
