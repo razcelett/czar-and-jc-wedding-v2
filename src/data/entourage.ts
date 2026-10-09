@@ -28,7 +28,7 @@ export const ENTOURAGE: Group[] = [
     title: 'Secondary Sponsors', layout: 'g3',
     people: [
       { role: 'Candle', symbol: 'to light our path', names: ['Louie Jan Gabo', 'Maria Czarlette Trixia Rancap'] },
-      { role: 'Veil', symbol: 'to light us as one', names: ['Benson Allam', 'Maria Czarina Allam'] },
+      { role: 'Veil', symbol: 'to clothe us as one', names: ['Benson Allam', 'Maria Czarina Allam'] },
       { role: 'Cord', symbol: 'to bind us together', names: ['Kristoffer Martin Dela Cruz', 'Nicole Alda Dela Cruz'] },
     ],
   },
@@ -36,7 +36,7 @@ export const ENTOURAGE: Group[] = [
     title: 'Bearers', layout: 'g3',
     people: [
       { role: 'Ring Bearer', symbol: 'to carry our symbol of love', names: ['Kassidy Nylah Dela Cruz'] },
-      { role: 'Bible Bearer', symbol: 'to carry our symbol of path', names: ['Jana Gabriela Lumauag'] },
+      { role: 'Bible Bearer', symbol: 'to carry our symbol of faith', names: ['Jana Gabriela Lumauag'] },
       { role: 'Coin Bearer', symbol: 'to carry our symbol of treasure', names: ['Jana Emilia Antoinette Lumauag'] },
     ],
   },
