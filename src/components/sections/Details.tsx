@@ -40,7 +40,7 @@ export default function Details() {
             <div className="when">2:00 PM · Ceremony</div>
             <h3>San Miguel Arkanghel Parish</h3>
             <p>Bgy. San Miguel, Puerto Princesa City. Please be seated by 1:45 PM; we take the plunge at 2:00.</p>
-            <a href="https://www.google.com/maps/place/San+Miguel+Arkanghel+Parish/@9.7479634,118.7440001,17z" target="_blank" rel="noopener">Map &amp; directions</a>
+            <a href="https://www.google.com/maps/place/San+Miguel+Arkanghel+Parish/@9.7479634,118.7440001,17z/data=!3m1!4b1!4m6!3m5!1s0x33b563e90f0beddf:0xcc58edccf6c943b4!8m2!3d9.7479634!4d118.746575!16s%2Fg%2F11bzvzs4f2?entry=ttu&g_ep=EgoyMDI2MTAwNi4wIKXMDSoASAFQAw%3D%3D" target="_blank" rel="noopener">Map &amp; directions</a>
           </article>
           <div className="venue-link" aria-hidden="true"><span></span><em>about 2 km</em><span></span></div>
           <article className="venue-card">
@@ -48,7 +48,7 @@ export default function Details() {
             <div className="when">4:00 PM · Reception</div>
             <h3>Citystate Asturias Hotel Palawan</h3>
             <p>South National Highway, Tiniguban, Puerto Princesa City. Where we come up for air, dinner and dancing.</p>
-            <a href="https://www.google.com/maps/place/Citystate+Asturias+Hotel+Palawan/@9.7656791,118.7428855,17z" target="_blank" rel="noopener">Map &amp; directions</a>
+            <a href="https://www.google.com/maps/place/Citystate+Asturias+Hotel+Palawan/@9.7656791,118.7428855,17z/data=!3m1!4b1!4m9!3m8!1s0x33b563982e86ffed:0x45d1901a7d4247ca!5m2!4m1!1i2!8m2!3d9.7656791!4d118.7454604!16s%2Fg%2F1tgqfyzw?entry=ttu&g_ep=EgoyMDI2MTAwNi4wIKXMDSoASAFQAw%3D%3D" target="_blank" rel="noopener">Map &amp; directions</a>
           </article>
         </div>
         <SectionLabel>The Divetime</SectionLabel>
