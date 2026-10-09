@@ -836,6 +836,12 @@ export function startScene(opts: SceneOptions): () => void {
   /* ---------- opening cover: tap the monogram, the water tears open ---------- */
   const cover = $('cover'), flash = $('flash');
   let opened = false;
+  // a refresh always starts at the surface: drop any #section from the address and jump to the top
+  try { history.scrollRestoration = 'manual'; } catch (e) {}
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  { const de = document.documentElement, sb = de.style.scrollBehavior; de.style.scrollBehavior = 'auto'; scrollTo(0, 0); de.style.scrollBehavior = sb; }
+  addEventListener('beforeunload', () => { document.documentElement.style.scrollBehavior = 'auto'; scrollTo(0, 0); });
+  addEventListener('pageshow', e => { if (e.persisted) location.reload(); });   // returning via Back on phones: start fresh from the cover
   document.documentElement.classList.add('locked');
   const music = $('bg-music'), musicBtn = $('music-toggle');
   function startMusic() { // must run inside the tap itself, or browsers block sound
@@ -966,7 +972,11 @@ export function startScene(opts: SceneOptions): () => void {
     }
   };
   on(navT, 'click', () => setNav(!navM.classList.contains('open')));
-  navM.querySelectorAll('a').forEach(a => on(a, 'click', () => setNav(false)));
+  navM.querySelectorAll('a').forEach(a => on(a, 'click', e => {
+    setNav(false);
+    const el = a.dataset.go && document.getElementById(a.dataset.go);
+    if (el) { e.preventDefault(); el.scrollIntoView({ behavior: RM ? 'auto' : 'smooth' }); }   // no "#rsvp" in the address, so a refresh starts at the top
+  }));
   addEventListener('keydown', e => { if (e.key === 'Escape') setNav(false); });
 
   /* ---------- RSVP: find your party, answer for each guest (same flow as the original site) ----------
@@ -980,7 +990,7 @@ export function startScene(opts: SceneOptions): () => void {
   const esc = v => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
   const slug = p => p.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 120) || 'party';
   const joinNames = n => n.length === 1 ? n[0] : n.length === 2 ? n[0] + ' and ' + n[1] : n.slice(0, -1).join(', ') + ', and ' + n[n.length - 1];
-  const origPh = searchInput.placeholder;
+  const origPh = 'Start typing your name…';   // fixed text: in development React runs this code twice, and the live placeholder may already read "Loading guest list…"
   searchInput.disabled = true; searchInput.placeholder = 'Loading guest list…';
 
   (async () => {
@@ -1001,21 +1011,52 @@ export function startScene(opts: SceneOptions): () => void {
      GET returns { ok, guestList: [{ party, note, guests: [names] }], rsvps: { party: [{ guestName, attending, nickname }] } };
      POST (text/plain JSON) takes { party, attendance: { name: 'yes'|'no' }, nicknames: { name: text }, submittedAt }. */
   const RSVP_ENDPOINT = opts.rsvpEndpoint;
-  function loadFromSheet() {
+  function loadFromSheet(attempt = 1) {
     if (!RSVP_ENDPOINT) { searchInput.placeholder = 'Guest list not connected yet'; return; }
-    fetch(RSVP_ENDPOINT).then(r => r.json()).then(res => {
+    // Google Apps Script can take a few seconds to wake up: say so, give it 20 s, then retry once
+    const slow = setTimeout(() => { if (!alive) return; if (searchInput.disabled) searchInput.placeholder = 'Still loading the guest list, one moment…'; }, 5000);
+    const ctrl = 'AbortController' in window ? new AbortController() : null;
+    const timer = setTimeout(() => ctrl && ctrl.abort(), 20000);
+    fetch(RSVP_ENDPOINT, ctrl ? { signal: ctrl.signal, cache: 'no-store' } : { cache: 'no-store' }).then(r => r.json()).then(res => {
+      clearTimeout(slow); clearTimeout(timer); if (!alive) return;
       if (!res.ok || !Array.isArray(res.guestList)) throw new Error(res.error || 'bad response');
       GUEST_LIST = res.guestList.filter(p => p.party && Array.isArray(p.guests)).map(p => ({ id: slug(p.party), party: p.party, note: p.note || '', guests: p.guests }));
       EXISTING = {}; Object.entries(res.rsvps || {}).forEach(([party, list]) => { if (list && list.length) EXISTING[slug(party)] = { party, guests: list }; });
       searchInput.disabled = !GUEST_LIST.length;
       searchInput.placeholder = GUEST_LIST.length ? origPh : 'The guest list is being prepared. Please check back soon.';
-    }).catch(() => { searchInput.placeholder = "Couldn't load the guest list. Refresh to try again."; });
+    }).catch(() => {
+      clearTimeout(slow); clearTimeout(timer); if (!alive) return;
+      if (attempt < 2) { loadFromSheet(attempt + 1); return; }
+      searchInput.placeholder = "Couldn't load the guest list. Refresh to try again.";
+    });
   }
   async function sendToSheet(p) {
     const attendance = {}, nicknames = {};
     p.guests.forEach(g => { attendance[g.guestName] = g.attending === 'Attending' ? 'yes' : 'no'; nicknames[g.guestName] = g.nickname; });
-    const res = await fetch(RSVP_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ party: p.party, attendance, nicknames, submittedAt: p.submittedAt }) }).then(r => r.json());
-    if (!res.ok) throw new Error(res.error || 'unknown');
+    let res = null;
+    try {
+      const ctrl = 'AbortController' in window ? new AbortController() : null;
+      const timer = setTimeout(() => ctrl && ctrl.abort(), 30000);
+      res = await fetch(RSVP_ENDPOINT, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ party: p.party, attendance, nicknames, submittedAt: p.submittedAt }), signal: ctrl ? ctrl.signal : undefined })
+        .then(r => r.json()).catch(() => null);
+      clearTimeout(timer);
+    } catch (e) { res = null; }
+    if (res && res.ok) return;
+    if (res && res.error === 'already_submitted') throw new Error('already_submitted');
+    // no clear answer (slow sheet, timeout, odd reply): check whether the reply actually landed before calling it a failure
+    if (await replyLanded(p.party)) return;
+    throw new Error((res && res.error) || 'unknown');
+  }
+  async function replyLanded(party) {
+    for (const wait of [0, 2500, 5000]) {
+      if (wait) await new Promise(r => setTimeout(r, wait));
+      try {
+        const d = await fetch(RSVP_ENDPOINT, { cache: 'no-store' }).then(r => r.json());
+        const list = d && d.rsvps && d.rsvps[party];
+        if (list && list.length) return true;
+      } catch (e) {}
+    }
+    return false;
   }
   /* search */
   function showSug(list) {
@@ -1145,12 +1186,13 @@ export function startScene(opts: SceneOptions): () => void {
     if (nickMissing) { statusEl.textContent = ''; return; }
     const payload = { party: current.party, guests: g.map(x => ({ guestName: x, attending: att[x] === 'yes' ? 'Attending' : "Can't make it", nickname: att[x] === 'yes' ? nick[x].trim() : '' })), submittedAt: new Date().toISOString() };
     submitBtn.disabled = true; statusEl.textContent = 'Sending…';
+    const slowMsg = setTimeout(() => { if (submitBtn.disabled && statusEl.textContent === 'Sending…') statusEl.textContent = 'Still sending, this can take a few seconds…'; }, 4000);
     try {
       if (!db) {
         try { await sendToSheet(payload); }
-        catch (err) { if (err.message === 'already_submitted') { statusEl.classList.add('error'); statusEl.textContent = 'Looks like this party already sent a response. Refresh the page to see it.'; submitBtn.disabled = false; return; } throw err; }
+        catch (err) { clearTimeout(slowMsg); if (err.message === 'already_submitted') { statusEl.classList.add('error'); statusEl.textContent = 'Looks like this party already sent a response. Refresh the page to see it.'; submitBtn.disabled = false; return; } throw err; }
         EXISTING[current.id] = payload;
-        guestListEl.querySelectorAll('button,input').forEach(el => el.disabled = true); thankYou(payload); submitBtn.hidden = true; return;
+        clearTimeout(slowMsg); guestListEl.querySelectorAll('button,input').forEach(el => el.disabled = true); thankYou(payload); submitBtn.hidden = true; return;
       }
       const ref = db.doc('responses/' + current.id), snap = await ref.get();
       if (snap.exists) { EXISTING[current.id] = snap.data(); statusEl.classList.add('error'); statusEl.textContent = 'Looks like this party already sent a response. Here it is.'; renderSubmitted(snap.data().guests || []); return; }
@@ -1159,6 +1201,7 @@ export function startScene(opts: SceneOptions): () => void {
       guestListEl.querySelectorAll('button,input').forEach(el => el.disabled = true);
       thankYou(payload); submitBtn.hidden = true;
     } catch (e) {
+      clearTimeout(slowMsg);
       submitBtn.disabled = false; statusEl.classList.add('error');
       statusEl.textContent = "That didn't go through. Please try again, or message Czar or JC directly at jcandczar@gmail.com or 0905 567 8681.";
     }
