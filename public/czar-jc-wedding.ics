@@ -1,0 +1,30 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Czar & JC//Wedding//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:czar-jc-wedding-20270918@czarandjc
+DTSTAMP:20261009T000000Z
+DTSTART:20270918T060000Z
+DTEND:20270918T150000Z
+SUMMARY:Czar & JC's Wedding
+LOCATION:San Miguel Arkanghel Parish\, Bgy. San Miguel\, Puerto Princesa Ci
+ ty\, Palawan
+DESCRIPTION:Ceremony 2:00 PM at San Miguel Arkanghel Parish (please be seat
+ ed by 1:45 PM).\nCocktails 4:00 PM\, reception 6:00 PM and after party 9:0
+ 0 PM at Citystate Asturias Hotel Palawan\, South National Highway\, Tinigu
+ ban.\nDress code: formal / semi-formal in our Colours of the Deep. See you
+  at depth!
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Czar & JC's wedding is tomorrow
+TRIGGER:-P1D
+END:VALARM
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Czar & JC's wedding: please be seated by 1:45 PM
+TRIGGER:-PT2H
+END:VALARM
+END:VEVENT
+END:VCALENDAR
