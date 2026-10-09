@@ -4,6 +4,7 @@ export default function DiverLine() {
       <div id="line" aria-hidden="false">
         <div className="rope"></div>
         <div className="fill" id="fill"></div>
+        <div className="trail" id="trail" aria-hidden="true"></div>
         <div id="diver" aria-hidden="true">
           <div className="body">
             <svg viewBox="0 0 100 262" fill="none">

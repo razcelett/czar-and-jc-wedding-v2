@@ -1,3 +1,5 @@
+import AddToCalendar from '../AddToCalendar';
+
 export default function Hero() {
   return (
     <>
@@ -17,6 +19,7 @@ export default function Hero() {
             <div className="cd-unit"><span className="cd-num" id="cd-m">00</span><span className="cd-label">Min</span></div>
             <div className="cd-unit"><span className="cd-num" id="cd-s">00</span><span className="cd-label">Sec</span></div>
           </div>
+          <AddToCalendar />
           <div className="scroll-cue">descend<div className="chevrons"><span></span><span></span><span></span></div></div>
         </div>
       </section>

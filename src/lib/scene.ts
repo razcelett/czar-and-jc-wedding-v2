@@ -4,6 +4,7 @@
    every animation loop, timer, listener and the music when the page unmounts. */
 import type { GalleryItem } from '@/data/gallery';
 import { popBubble } from './pop';
+import { googleCalendarUrl, ICS_PATH } from '@/data/calendar';
 
 export type SceneOptions = { gallery: GalleryItem[]; weddingDate: string; rsvpEndpoint: string };
 
@@ -46,6 +47,22 @@ export function startScene(opts: SceneOptions): () => void {
   const actors = [];
   const io = new IntersectionObserver(es => { for (const e of es) e.target._vis = e.isIntersecting; }, { rootMargin: '240px 0px' });
   offs.push(() => io.disconnect()); io.observe(skyCv);
+  /* ---------- scroll reveal: details fade/rise in as they enter the screen ---------- */
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const targets = [...document.querySelectorAll(
+      'main > section:not(#surface) :is(.head, .venue-card, .timeline .tl, .dress-copy, .dress-rules, .palette-card, .attire-visual, .ent, .faq-item, .rsvp-box, .rsvp-text, .gallery-top > *, .strip, .contact)'
+    )] as HTMLElement[];
+    const rio = new IntersectionObserver(es => {
+      for (const e of es) if (e.isIntersecting) { e.target.classList.add('rv-in'); rio.unobserve(e.target); }
+    }, { threshold: 0.12, rootMargin: '0px 0px -6% 0px' });
+    const seen = new Map<Element, number>();
+    for (const el of targets) {
+      const par = el.parentElement!, n = seen.get(par) || 0; seen.set(par, n + 1);
+      el.style.setProperty('--rd', Math.min(n, 5) * 0.09 + 's');
+      el.classList.add('rv'); rio.observe(el);
+    }
+    offs.push(() => { rio.disconnect(); targets.forEach(el => el.classList.remove('rv', 'rv-in')); });
+  }
   const sections = [...document.querySelectorAll('main > section')];
   let W = 0, H = 0, DPR = 1, maxScroll = 1, anchors = [];
   let SURF = 0.5; // waterline height: set from the hero's content so the sky never has dead space
@@ -133,7 +150,7 @@ export function startScene(opts: SceneOptions): () => void {
   }
   function placeActors() {
     for (const a of actors) {
-      const y = a.floor ? maxScroll + H * .14 + H * SURF - floorImg.hz0 - H * .55 : sAt(a.m) + H * SURF - a.bandH / 2;
+      const y = a.floor ? maxScroll + H - clamp(H * .34, 190, floorImg.fh - floorImg.hz0 - 6) - floorImg.hz0 - H * .55 : sAt(a.m) + H * SURF - a.bandH / 2;
       a.cv.style.top = Math.round(y) + 'px';
     }
   }
@@ -399,7 +416,7 @@ export function startScene(opts: SceneOptions): () => void {
     const sky = document.querySelector('.sky-part'), sea = document.querySelector('.sea-part'); if (!sky || !sea) return;
     const sum = el => { const k = [...el.children], g = parseFloat(getComputedStyle(el).rowGap) || 0; return k.reduce((h, c) => h + c.offsetHeight, 0) + g * (k.length - 1); };
     const skyH = sum(sky), seaH = sum(sea), total = skyH + 24 + 28 + seaH;
-    const top = Math.max(76, (innerHeight - total) / 2);
+    const top = clamp((innerHeight - total) * .38, 76, 130);   // content sits a little above centre, never more than 130px of empty sky above it
     SURF = clamp((top + skyH + 24) / innerHeight, .3, .6);
     document.documentElement.style.setProperty('--surf', SURF);
     sizeSky();   // the waterline moved (fonts loaded): resize the sky canvas to match
@@ -422,7 +439,8 @@ export function startScene(opts: SceneOptions): () => void {
   }
   function layout() {
     if (!alive) return;
-    maxScroll = Math.max(1, document.documentElement.scrollHeight - H);
+    docH = document.documentElement.scrollHeight; lastMax = -1;
+    maxScroll = Math.max(1, docH - innerHeight);
     anchors = sections.map((sec, i) => {
       const s = i === 0 ? 0 : i === sections.length - 1 ? maxScroll : sec.offsetTop + Math.min(sec.offsetHeight, H) / 2 - H / 2 + (sec.offsetHeight > H ? H * .15 : 0);
       return { s: clamp(s, 0, maxScroll), d: +sec.dataset.depth, el: sec, label: sec.dataset.label };
@@ -679,11 +697,12 @@ export function startScene(opts: SceneOptions): () => void {
   /* ---------- the freediving line + diver ---------- */
   const TITLES = { surface: 'Welcome', entourage: 'Entourage', details: 'Details', gallery: 'Gallery', rsvp: 'RSVP', faqs: 'FAQs', footer: 'See you at depth' };
   const zoneOf = () => { let cur = anchors[0]; for (const a of anchors) if (scrollY >= a.s - H * .35) cur = a; return cur ? TITLES[cur.el.id] || '' : ''; };   // section the diver is in
-  const line = $('line'), fill = $('fill'), diver = $('diver'), tag = $('depth-tag');
+  const line = $('line'), fill = $('fill'), diver = $('diver'), tag = $('depth-tag'), trail = $('trail');
+  let trailV = 0, upV = 0, lastTrail = -1, bubT = 0;   // glow trail while descending, bubbles while ascending
   const legL = $('legL'), legR = $('legR'), finL = $('finL'), finR = $('finR');
   let marks = [], shownM = -1, kPh = 0, kAmp = .3, kPer = 4;
   let RX = 30; const ropeX = () => RX;
-  let diverH = 52, lastTop = -1, lastTh = -1, lastFill = -1, heightChk = 0;   // cached so the per-frame update never reads layout
+  let diverH = 52, lastTop = -1, lastTh = -1, lastFill = -1, heightChk = 0, docH = 0, lastMax = -1;   // cached so the per-frame update never reads layout
   function buildMarks() {
     marks.forEach(m => m.remove()); marks = [];
     for (const a of anchors) {
@@ -697,24 +716,55 @@ export function startScene(opts: SceneOptions): () => void {
   }
   function updateLine(sy, dt, wl) {
     // reads first, and only twice a second: reading layout after writing styles forces a reflow every frame
-    if ((heightChk += dt) > .5) {
+    if ((heightChk += dt) > .5 || !docH) {
       heightChk = 0;
-      const liveMax = Math.max(1, document.documentElement.scrollHeight - H);
-      if (Math.abs(liveMax - maxScroll) > 2) layout();                     // page height changed (images loaded): re-pin the depths
+      const live = document.documentElement.scrollHeight;
+      if (docH && Math.abs(live - docH) > 2) layout();                      // page height changed (images loaded): re-pin the depths
+      docH = live;
     }
-    const top = Math.round(clamp(wl, 0, H * .62)), th = H - top - 36;
+    /* The real bottom of the page depends on the CURRENT screen height. On phones the address bar hides while you
+       scroll down, so the screen grows taller than when the scene was measured (H). Using the live height keeps the
+       end of the line, the diver and the last dot pinned together at the seabed without having to scroll again. */
+    const vh = innerHeight, maxS = Math.max(1, docH - vh);
+    if (Math.abs(maxS - lastMax) > 1) {                                    // re-pin the seabed anchor to the true bottom
+      lastMax = maxS; maxScroll = maxS;
+      const lastA = anchors[anchors.length - 1]; if (lastA) lastA.s = maxS;
+      for (let i = anchors.length - 2; i >= 1; i--) anchors[i].s = Math.min(anchors[i].s, anchors[i + 1].s - 1);
+      lastTh = -1;
+    }
+    const top = Math.round(clamp(wl, 0, vh * .62)), th = vh - top - 36;
     if (top !== lastTop) { lastTop = top; line.style.top = top + 'px'; }
-    const f = clamp(sy / maxScroll, 0, 1), m = sy >= maxScroll - 2 ? anchors[anchors.length - 1].d : Math.max(0, depthAt(sy));
+    const atEnd = sy >= maxS - 2;
+    const f = atEnd ? 1 : clamp(sy / maxS, 0, 1), m = atEnd ? anchors[anchors.length - 1].d : Math.max(0, depthAt(sy));
     const atSurf = clamp(1 - m / 3, 0, 1), dh = diverH;
     const y = f * th;
     const fy = Math.round(y * 2) / 2; if (fy !== lastFill) { lastFill = fy; fill.style.height = y + 'px'; }
-    if (th !== lastTh) { lastTh = th; for (const b of marks) b.style.top = (b._a.s / maxScroll * th) + 'px'; }   // marks only move when the line's length changes
+    if (th !== lastTh) { lastTh = th; for (const b of marks) b.style.top = (Math.min(b._a.s, maxS) / maxS * th) + 'px'; }   // marks only move when the line's length changes
     const bob = atSurf * wave(ropeX(), T) * .8 + (1 - atSurf) * (dir === 'idle' && !RM ? Math.sin(T * .9) * 2 : 0);
     diver.style.transform = `translateY(${y - dh * lerp(.5, .2, atSurf) + bob}px)`;
     // direction: head-down while descending, head-up while ascending or resting at the surface
     const dy = sy - lastSY; lastSY = sy;
     if (Math.abs(dy) > .5) { dir = dy > 0 ? 'down' : 'up'; idleT = 0; } else if ((idleT += dt) > .5) dir = 'idle';
     if (dir === 'down') diver.classList.add('down'); else if (dir === 'up' || atSurf > .5) diver.classList.remove('down');
+    // a soft glow streams behind the diver while descending: longer and brighter the faster you scroll
+    const vel = dt > 0 ? dy / dt : 0;
+    trailV = lerp(trailV, Math.max(0, vel), Math.min(1, dt * (vel > trailV ? 8 : 2.5)));
+    const tl = RM || atSurf > .5 ? 0 : Math.round(clamp(trailV * .16, 0, vh * .2));
+    if (trail && (tl > 1 || lastTrail > 1)) {
+      lastTrail = tl;
+      trail.style.transform = `translateY(${y - tl}px)`; trail.style.height = tl + 'px';
+      trail.style.opacity = String(clamp(tl / 50, 0, 1));
+    }
+    // gentle bubbles rise from the diver while ascending (they pop at the waterline)
+    upV = lerp(upV, Math.max(0, -vel), Math.min(1, dt * (-vel > upV ? 8 : 2)));   // smoothed: scroll events arrive in bursts
+    if (!RM && upV > 40 && atSurf < .5) {
+      bubT += dt * clamp(upV / 70, 2, 12);
+      while (bubT > 1) {
+        bubT -= 1;
+        bubbles.push({ x: ropeX() + R(-3, 7), y: top + y - dh * .45 + R(-4, 4), r: R(1.4, 3.6), v: R(55, 115), ph: R(0, 6.28) });
+      }
+      if (bubbles.length > 160) bubbles.splice(0, bubbles.length - 160);
+    } else bubT = Math.min(bubT, .6);
     // slow, long freediving kick from the hips; fins flex behind the stroke
     const moving = dir !== 'idle';
     kAmp = lerp(kAmp, RM ? 0 : moving ? 1 : atSurf > .5 ? .25 : .4, Math.min(1, dt * 2.5));
@@ -889,15 +939,16 @@ export function startScene(opts: SceneOptions): () => void {
     on($('strip-next'), 'click', () => step(1)); on(strip, 'pointercancel', () => { drag = null; strip.classList.remove('dragging'); });
     on(track, 'keydown', e => { const c = e.target.closest('.card'); if (c && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openLb(+c.dataset.i); } });
 
-    let cur = 0, opener = null;
+    let cur = 0, opener = null, openedAt = 0;
     function show(i) {
       cur = (i + GALLERY.length) % GALLERY.length; const g = GALLERY[cur];
       if (g.video) { img.hidden = true; vid.hidden = false; vid.poster = g.poster || ''; vid.src = g.full || g.src; vid.play().catch(() => {}); }
       else { vid.pause(); vid.hidden = true; img.hidden = false; img.src = g.full || g.src; img.alt = g.cap; }
       cap.textContent = `${pad2(cur + 1)} / ${pad2(GALLERY.length)} · ${g.cap}`;
     }
-    function openLb(i) { opener = document.activeElement; lb.hidden = false; show(i); $('lb-close').focus(); }
-    function closeLb() { if (lb.hidden || lb.classList.contains('closing')) return; vid.pause(); if (!RM) popBubble(lb.querySelector('.pop-body')); lb.classList.add('closing'); setTimeout(() => { lb.hidden = true; lb.classList.remove('closing'); if (opener && opener.focus) opener.focus(); }, RM ? 0 : 700); }
+    function openLb(i) { opener = document.activeElement; openedAt = performance.now(); lb.hidden = false; show(i); $('lb-close').focus(); }
+    function closeLb() { if (lb.hidden || lb.classList.contains('closing') || performance.now() - openedAt < 500) return;   // 500ms: the tap that opened the viewer must not also close it
+      vid.pause(); if (!RM) popBubble(lb.querySelector('.pop-body')); lb.classList.add('closing'); setTimeout(() => { lb.hidden = true; lb.classList.remove('closing'); if (opener && opener.focus) opener.focus(); }, RM ? 0 : 700); }
     $('lb-close').onclick = closeLb; $('lb-prev').onclick = () => show(cur - 1); $('lb-next').onclick = () => show(cur + 1);
     on(lb, 'click', e => { if (e.target === lb) closeLb(); });
     addEventListener('keydown', e => { if (lb.hidden) return; if (e.key === 'Escape') closeLb(); if (e.key === 'ArrowLeft') show(cur - 1); if (e.key === 'ArrowRight') show(cur + 1); });
@@ -1046,6 +1097,37 @@ export function startScene(opts: SceneOptions): () => void {
       if (inp.value.trim()) { inp.classList.remove('required-error'); inp.nextElementSibling.classList.remove('show'); }
     }));
   }
+  /* RSVP thank-you: a burst of bubbles from the button and a personal note (with "add to calendar" for those coming) */
+  function bubbleBurst(from) {
+    if (RM || !from) return;
+    const r = from.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    for (let i = 0; i < 26; i++) {
+      const b = document.createElement('span'), sz = R(6, 18);
+      b.className = 'rsvp-bubble';
+      b.style.cssText = `left:${cx + R(-r.width / 2, r.width / 2)}px;top:${cy}px;width:${sz}px;height:${sz}px;--dx:${R(-60, 60)}px;--rise:${R(160, 360)}px;--dur:${R(1.6, 2.8)}s;--del:${R(0, .5)}s`;
+      document.body.appendChild(b);
+      setTimeout(() => b.remove(), 3600);
+    }
+  }
+  function thankYou(payload) {
+    const going = payload.guests.filter(x => x.attending === 'Attending');
+    const first = n => (n || '').trim().split(/\s+/)[0];
+    const names = going.map(x => x.nickname || first(x.guestName));
+    const title = going.length ? `See you at depth, ${joinNames(names)}!` : `Thank you, ${joinNames(payload.guests.map(x => first(x.guestName)))}.`;
+    const body = going.length
+      ? (going.length < payload.guests.length
+          ? "Your reply is in. We're so glad you're diving in with us, and we'll miss those who can't make it."
+          : "Your reply is in. We can't wait to celebrate with you on September 18, 2027 in Puerto Princesa.")
+      : "We'll miss you, and we're grateful you let us know. You'll be in our hearts on the day.";
+    const cal = going.length
+      ? `<div class="rt-cal"><span>Save the date:</span> <a href="${googleCalendarUrl()}" target="_blank" rel="noopener">Google Calendar</a> <i>·</i> <a href="${ICS_PATH}" download="czar-jc-wedding.ics">Apple / Outlook</a></div>`
+      : '';
+    guestListEl.insertAdjacentHTML('beforeend', `<div class="rsvp-thanks" tabindex="-1"><svg class="rt-icon" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="22" r="9"/><circle cx="30" cy="11" r="4.5"/><circle cx="11" cy="9" r="3"/></svg><p class="rt-title">${esc(title)}</p><p class="rt-body">${esc(body)}</p>${cal}</div>`);
+    statusEl.textContent = '';
+    bubbleBurst(submitBtn);
+    const card = guestListEl.querySelector('.rsvp-thanks');
+    setTimeout(() => { card.scrollIntoView({ behavior: RM ? 'auto' : 'smooth', block: 'center' }); card.focus({ preventScroll: true }); }, 250);
+  }
   on(submitBtn, 'click', async () => {
     if (!current) return;
     statusEl.classList.remove('error');
@@ -1067,16 +1149,15 @@ export function startScene(opts: SceneOptions): () => void {
       if (!db) {
         try { await sendToSheet(payload); }
         catch (err) { if (err.message === 'already_submitted') { statusEl.classList.add('error'); statusEl.textContent = 'Looks like this party already sent a response. Refresh the page to see it.'; submitBtn.disabled = false; return; } throw err; }
-        EXISTING[current.id] = payload; statusEl.textContent = 'Got it, thank you! Your response has been recorded.';
-        submitBtn.hidden = true; guestListEl.querySelectorAll('button,input').forEach(el => el.disabled = true); return;
+        EXISTING[current.id] = payload;
+        guestListEl.querySelectorAll('button,input').forEach(el => el.disabled = true); thankYou(payload); submitBtn.hidden = true; return;
       }
       const ref = db.doc('responses/' + current.id), snap = await ref.get();
       if (snap.exists) { EXISTING[current.id] = snap.data(); statusEl.classList.add('error'); statusEl.textContent = 'Looks like this party already sent a response. Here it is.'; renderSubmitted(snap.data().guests || []); return; }
       await ref.set(payload);
       EXISTING[current.id] = payload;
-      statusEl.textContent = 'Got it, thank you! Your response has been recorded.';
-      submitBtn.hidden = true;
       guestListEl.querySelectorAll('button,input').forEach(el => el.disabled = true);
+      thankYou(payload); submitBtn.hidden = true;
     } catch (e) {
       submitBtn.disabled = false; statusEl.classList.add('error');
       statusEl.textContent = "That didn't go through. Please try again, or message Czar or JC directly at jcandczar@gmail.com or 0905 567 8681.";
